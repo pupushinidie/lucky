@@ -32,6 +32,8 @@ npm run typecheck
 - `packages/game`：纯函数规则引擎（`engine.ts`、`board.ts` 的 `canPlace` / `legalCells`）和测试。
 - `apps/server`：Socket.IO 房间、计时、重连、语音信令（和其他游戏同一套）。
 - `apps/web`：React 网页。`GameBoard.tsx` 是牌桌，数字牌 = PixelLab 画的空白牌面 + 像素字体数字。
+  - 牌桌在电脑和平板上正好占满一屏、不滚动：`useFitLevel` 先用最大的牌面（自己的棋盘 128px），渲染后哪一列放不下就降一档（96、64……），牌面只用原图 32px 的整数倍。手机竖着排，第一屏是提示条、自己的棋盘、牌池和手牌、桌面明牌。
+  - 桌面明牌按数字排好，相同的叠成一张标「×2」（只是显示，拿牌规则不变）。
 - `art/`：`art.py` 生成候选（首页主图、牌面、四叶草图标），`selection.json` 记选中的，`export.py` 导出到 `apps/web/public/art/`。
 
 ## 画面：白天版和夜间版

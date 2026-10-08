@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { CELLS, legalCells, type GameEvent, type GameCommand, type GameState, type LobbyRoomSnapshot, type Player } from "@lucky/game";
 import { art, seatColor } from "./art.js";
 import GameRules from "./GameRules.js";
@@ -17,6 +17,55 @@ interface GameBoardProps {
   readonly onCommand: (command: GameCommand) => void;
   readonly onRematch: (accept: boolean) => void;
   readonly onDissolve: () => void;
+}
+
+/**
+ * 牌面尺寸档位。牌面原图 32px，只用整数倍（128 / 96 / 64 / 32），像素才不会糊。
+ * 桌面端牌桌固定占满可视区域：先用最大一档，渲染后哪一列放不下就降一档（见 useFitLevel）。
+ * my：自己的棋盘；hand：手里的牌；opp：其他玩家的棋盘；table：桌面明牌。
+ */
+const LEVELS = [
+  { my: 128, hand: 96, opp: 64, table: 64, stack: false },
+  { my: 128, hand: 96, opp: 32, table: 64, stack: false },
+  { my: 96, hand: 96, opp: 64, table: 64, stack: false },
+  { my: 96, hand: 64, opp: 32, table: 64, stack: false },
+  // stack：牌池和手牌挪到自己棋盘下面，中间一列只放桌面明牌和其他玩家（平板、4 人局）
+  { my: 64, hand: 64, opp: 32, table: 64, stack: true },
+  { my: 64, hand: 64, opp: 32, table: 32, stack: true },
+] as const;
+/** 手机：竖着排，允许往下滚，自己的棋盘、牌池、手牌、桌面明牌在第一屏。 */
+const MOBILE_LEVEL = { my: 64, hand: 64, opp: 32, table: 64, stack: false } as const;
+const MOBILE_WIDTH = 760;
+
+/** 牌上数字的字号：12 的整数倍，约占牌面一半。 */
+const numberFont = (size: number) => ({ 128: 72, 96: 48, 64: 36, 32: 24 } as Record<number, number>)[size] ?? 24;
+
+function useFitLevel(screen: RefObject<HTMLDivElement | null>, version: number) {
+  const [mobile, setMobile] = useState(() => window.innerWidth < MOBILE_WIDTH);
+  const [level, setLevel] = useState(0);
+  // 窗口大小变了、开了新的一局：从最大一档重新试。
+  useEffect(() => {
+    let timer = 0;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { setMobile(window.innerWidth < MOBILE_WIDTH); setLevel(0); }, 120);
+    };
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("resize", onResize); window.clearTimeout(timer); };
+  }, []);
+  const lastVersion = useRef(version);
+  useEffect(() => {
+    if (version < lastVersion.current) setLevel(0);
+    lastVersion.current = version;
+  }, [version]);
+  // 每次渲染后检查：有一列内容超出了自己的高度（或宽度），就降一档。只降不升，桌面明牌变多时不会来回跳。
+  useLayoutEffect(() => {
+    if (mobile || level >= LEVELS.length - 1 || !screen.current) return;
+    const over = [...screen.current.querySelectorAll<HTMLElement>(".lk-fit")]
+      .some((column) => column.scrollHeight > column.clientHeight + 1 || column.scrollWidth > column.clientWidth + 1);
+    if (over) setLevel(level + 1);
+  });
+  return mobile ? MOBILE_LEVEL : LEVELS[level]!;
 }
 
 function useCountdown(room: LobbyRoomSnapshot): number | null {
@@ -57,30 +106,33 @@ function describeEvent(event: GameEvent, name: (id: string) => string): string |
 }
 
 /** 一张数字牌。 */
-export function Tile({ value, hidden = false, className = "" }: { value: number | null; hidden?: boolean; className?: string }) {
+export function Tile({ value, hidden = false, size, className = "" }: { value: number | null; hidden?: boolean; size?: number; className?: string }) {
+  const style = size ? ({ "--size": `${size}px`, "--num": `${numberFont(size)}px` } as CSSProperties) : undefined;
   return (
-    <span className={`lk-tile${hidden ? " hidden" : ""} ${className}`} aria-label={hidden ? "背面朝上的牌" : String(value)}>
+    <span className={`lk-tile${hidden ? " hidden" : ""} ${className}`} style={style} aria-label={hidden ? "背面朝上的牌" : String(value)}>
       {!hidden && <b>{value}</b>}
     </span>
   );
 }
 
-function Grid({ player, me, hand, lastPlaced, onCell }: {
+function Grid({ player, me, hand, size, lastPlaced, onCell }: {
   player: Player;
   me: boolean;
   /** 手里的牌：能放的格子高亮。 */
   hand: number | null;
+  /** 牌面边长（32 的整数倍）。 */
+  size: number;
   lastPlaced: number | undefined;
   onCell?: (cell: number) => void;
 }) {
   const legal = new Set(hand !== null ? legalCells(player.board, hand) : []);
   return (
-    <div className={me ? "lk-grid mine" : "lk-grid"} role="grid" aria-label={`${player.name} 的棋盘`}>
+    <div className={me ? "lk-grid mine" : "lk-grid"} style={{ "--cell": `${size}px` } as CSSProperties} role="grid" aria-label={`${player.name} 的棋盘`}>
       {Array.from({ length: CELLS }, (_, cell) => {
         const value = player.board[cell] ?? null;
         const can = legal.has(cell);
         const classes = ["lk-cell", can ? (value === null ? "can-place" : "can-swap") : "", cell === lastPlaced ? "last" : ""].join(" ");
-        const content = value !== null ? <Tile value={value} /> : null;
+        const content = value !== null ? <Tile value={value} size={size} /> : null;
         return can && onCell ? (
           <button key={cell} type="button" className={classes} onClick={() => onCell(cell)} title={value === null ? `放在${cellName(cell)}` : `换下 ${value}`}>{content}</button>
         ) : (
@@ -89,6 +141,11 @@ function Grid({ player, me, hand, lastPlaced, onCell }: {
       })}
     </div>
   );
+}
+
+/** 棋盘上的牌数：大字的数字 + 小字的「/16」。 */
+function Score({ value }: { value: number }) {
+  return <span className="lk-score"><b>{value}</b>/16</span>;
 }
 
 function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, chat, onCommand, onRematch, onDissolve }: GameBoardProps) {
@@ -105,6 +162,8 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
   const connected = (playerId: string) => room.members.find((candidate) => candidate.playerId === playerId)?.connected ?? false;
   const firstVersion = useRef(game.version);
   const shownNotice = game.version === firstVersion.current ? notice : "";
+  const screen = useRef<HTMLDivElement>(null);
+  const sizes = useFitLevel(screen, game.version);
 
   const [log, setLog] = useState<{ key: string; text: string }[]>([]);
   const seenVersion = useRef(game.version);
@@ -121,17 +180,48 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
 
   const hand = myTurn && game.stage === "place" ? game.hand?.value ?? null : null;
   const send = (command: GameCommand) => { if (!busy) onCommand(command); };
-  const takeable = (value: number) => myTurn && game.stage === "choose" && me !== undefined && legalCells(me.board, value).length > 0;
+  const choosing = myTurn && game.stage === "choose";
+  const takeable = (value: number) => choosing && me !== undefined && legalCells(me.board, value).length > 0;
+  const canDraw = choosing && game.potCount > 0 && !busy;
+  // 桌面明牌按数字排好，相同的叠成一张（拿哪一张都一样）；index 是这个数字在桌面上第一次出现的位置。
+  const tableGroups = [...new Set(game.table)].sort((a, b) => a - b)
+    .map((value) => ({ value, count: game.table.filter((v) => v === value).length, index: game.table.indexOf(value) }));
+
+  const supply = (
+    <div className="lk-supply">
+      <section className={canDraw ? "lk-panel lk-pot active" : "lk-panel lk-pot"}>
+        <h3>牌池<span className="lk-score">剩 <b>{game.potCount}</b></span></h3>
+        <button type="button" className="lk-pile" disabled={!canDraw} onClick={() => send({ type: "DRAW" })} title="盲抽一张">
+          <Tile value={null} hidden size={64} />
+          {canDraw && <span>抽牌</span>}
+        </button>
+      </section>
+      <section className={game.phase === "playing" && game.stage === "place" ? "lk-panel lk-hand active" : "lk-panel lk-hand"}>
+        <h3>{game.phase === "playing" && !myTurn ? `${current.name} 手里` : "手里的牌"}</h3>
+        {game.phase === "playing" && game.stage === "place" && game.hand ? (
+          <>
+            <Tile value={game.hand.value} hidden={game.hand.value === null} size={sizes.hand} />
+            <div className="lk-hand-info">
+              <small>{game.hand.from === "pot" ? "从牌池抽的" : "从桌面拿的"}</small>
+              {myTurn && game.hand.from === "pot" && (
+                <button type="button" className="quiet-button lk-discard" disabled={busy} onClick={() => send({ type: "DISCARD" })} title="弃到桌面，谁都能拿">弃牌</button>
+              )}
+            </div>
+          </>
+        ) : <p className="lk-muted">还没拿牌</p>}
+      </section>
+    </div>
+  );
 
   let prompt: string;
   if (game.phase === "finished") prompt = "对局结束";
-  else if (myTurn && game.stage === "choose") prompt = game.potCount > 0 ? "轮到你了：从牌池抽一张，或拿桌面上的明牌" : "牌池空了：只能拿桌面上的明牌";
-  else if (myTurn && game.hand?.from === "pot") prompt = "点亮着的格子放牌（金框是换下原来的牌），或者弃到桌面";
-  else if (myTurn) prompt = "拿了明牌就必须放上棋盘：点亮着的格子";
-  else prompt = game.stage === "place" ? `${current.name} 正在放牌` : `${current.name} 在想抽牌还是拿明牌`;
+  else if (choosing) prompt = game.potCount > 0 ? "轮到你：从牌池抽一张，或拿一张桌面明牌" : "牌池空了：只能拿桌面明牌";
+  else if (myTurn && game.hand?.from === "pot") prompt = "点亮着的格子放牌，或者弃到桌面";
+  else if (myTurn) prompt = "拿了明牌必须放上棋盘：点亮着的格子";
+  else prompt = game.stage === "place" ? `${current.name} 正在放牌` : `${current.name} 在选抽牌还是拿明牌`;
 
   return (
-    <div className="lk-screen" style={{ "--tile-img": `url(${art.tile})` } as CSSProperties}>
+    <div ref={screen} className="lk-screen" style={{ "--tile-img": `url(${art.tile})`, "--opp": `${sizes.opp}px` } as CSSProperties}>
       <header className="lk-topbar">
         {brand}
         <div className="lk-turn">
@@ -142,7 +232,6 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
               {myTurn ? "轮到你" : `轮到 ${current.name}`}
             </span>
           )}
-          {game.phase === "playing" && secondsLeft !== null && <b className={secondsLeft <= 10 ? "lk-timer low" : "lk-timer"}>{secondsLeft}s</b>}
         </div>
         <div className="lk-topbar-right">
           {themeToggle}
@@ -152,77 +241,60 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         </div>
       </header>
 
-      <div className="lk-layout">
-        <section className="lk-main">
-          <div className={myTurn ? "lk-prompt mine" : "lk-prompt"} role="status">
-            <i className="lk-dot" style={{ background: seatColor(current.color) }} />{prompt}
-          </div>
-          {(error || shownNotice) && <p className={error ? "lk-feedback error" : "lk-feedback"} role={error ? "alert" : "status"}>{error || shownNotice}</p>}
+      <div className={myTurn ? "lk-prompt mine" : "lk-prompt"} role="status">
+        <i className="lk-dot" style={{ background: seatColor(current.color) }} />
+        <span className="lk-prompt-text">{prompt}</span>
+        {(error || shownNotice) && <span className={error ? "lk-feedback error" : "lk-feedback"} role={error ? "alert" : "status"}>{error || shownNotice}</span>}
+        {game.phase === "playing" && secondsLeft !== null && <b className={secondsLeft <= 10 ? "lk-timer low" : "lk-timer"} title="这一步还剩的秒数">{secondsLeft}s</b>}
+      </div>
 
-          <div className="lk-center">
-            {me && (
-              <div className="lk-board-panel mine" style={{ "--seat": seatColor(me.color) } as CSSProperties}>
-                <h3><i className="lk-dot" style={{ background: seatColor(me.color) }} />你的棋盘 <small>{me.score} / 16</small></h3>
-                <Grid player={me} me hand={hand} lastPlaced={game.lastPlaced?.player === me.id ? game.lastPlaced.cell : undefined} onCell={(cell) => send({ type: "PLACE", cell })} />
-              </div>
-            )}
-
-            <div className="lk-supply">
-              <section className="lk-panel lk-pot">
-                <h3>牌池 <small>剩 {game.potCount} 张</small></h3>
-                <button type="button" className="lk-pile" disabled={!myTurn || game.stage !== "choose" || game.potCount === 0 || busy} onClick={() => send({ type: "DRAW" })} title="盲抽一张">
-                  <Tile value={null} hidden />
-                  <span>{myTurn && game.stage === "choose" && game.potCount > 0 ? "抽一张" : "牌池"}</span>
-                </button>
-              </section>
-              <section className={game.stage === "place" ? "lk-panel lk-hand active" : "lk-panel lk-hand"}>
-                <h3>{game.phase === "playing" ? (myTurn ? "你手里的牌" : `${current.name} 手里`) : "手牌"}</h3>
-                {game.phase === "playing" && game.stage === "place" && game.hand ? (
-                  <>
-                    <Tile value={game.hand.value} hidden={game.hand.value === null} className="big" />
-                    <small>{game.hand.from === "pot" ? "从牌池抽的" : "从桌面拿的"}</small>
-                    {myTurn && game.hand.from === "pot" && (
-                      <button type="button" className="quiet-button" disabled={busy} onClick={() => send({ type: "DISCARD" })}>弃到桌面</button>
-                    )}
-                  </>
-                ) : <p className="lk-muted">还没拿牌</p>}
-              </section>
+      <div className={sizes.stack ? "lk-layout lk-fit stacked" : "lk-layout lk-fit"}>
+        {/* 左列：自己的棋盘（stack 档位时牌池和手牌也放这里）；中列：牌池和手牌、桌面明牌、其他玩家 */}
+        <div className="lk-col lk-col-mine lk-fit">
+          {me && (
+            <div className="lk-board-panel mine" style={{ "--seat": seatColor(me.color) } as CSSProperties}>
+              <h3><i className="lk-dot" style={{ background: seatColor(me.color) }} />你的棋盘<Score value={me.score} /></h3>
+              <Grid player={me} me hand={hand} size={sizes.my} lastPlaced={game.lastPlaced?.player === me.id ? game.lastPlaced.cell : undefined} onCell={(cell) => send({ type: "PLACE", cell })} />
             </div>
-            <div className="lk-others">
-              {others.map((player) => (
-                <div
-                  key={player.id}
-                  className={["lk-board-panel", game.phase === "playing" && player.id === current.id ? "active" : "", !connected(player.id) ? "offline" : ""].join(" ")}
-                  style={{ "--seat": seatColor(player.color) } as CSSProperties}
-                >
-                  <h3>
-                    <i className="lk-dot" style={{ background: seatColor(player.color) }} />{player.name}
-                    {!connected(player.id) && <small className="lk-offline">离线</small>}
-                    <small>{player.score} / 16</small>
-                  </h3>
-                  <Grid player={player} me={false} hand={null} lastPlaced={game.lastPlaced?.player === player.id ? game.lastPlaced.cell : undefined} />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <section className="lk-panel lk-table">
-            <h3>桌面明牌 <small>{game.table.length} 张 · 所有人都能拿，拿了必须放</small></h3>
-            {game.table.length === 0 ? <p className="lk-muted">还没有人弃牌。</p> : (
-              <div className="lk-table-tiles">
-                {game.table.map((value, index) => takeable(value) ? (
-                  <button key={index} type="button" className="lk-take" disabled={busy} onClick={() => send({ type: "TAKE", index })} title={`拿走 ${value}`}>
-                    <Tile value={value} />
-                  </button>
-                ) : (
-                  <span key={index} className={myTurn && game.stage === "choose" ? "lk-take dim" : "lk-take"}><Tile value={value} /></span>
-                ))}
+          )}
+          {me && sizes.stack && supply}
+        </div>
+        <div className="lk-col lk-col-mid lk-fit">
+          {me && !sizes.stack && supply}
+          <section className={choosing && tableGroups.some((group) => takeable(group.value)) ? "lk-panel lk-table active" : "lk-panel lk-table"}>
+            <h3>桌面明牌<small>{game.table.length} 张 · 谁都能拿，拿了必须放</small></h3>
+            {tableGroups.length === 0 ? <p className="lk-muted">还没有人弃牌。</p> : (
+              <div className="lk-table-tiles" style={{ "--tbl": `${sizes.table}px` } as CSSProperties}>
+                {tableGroups.map(({ value, count, index }) => {
+                  const tile = <Tile value={value} size={sizes.table} />;
+                  const badge = count > 1 ? <i className="lk-count">×{count}</i> : null;
+                  return takeable(value) ? (
+                    <button key={value} type="button" className="lk-take" disabled={busy} onClick={() => send({ type: "TAKE", index })} title={`拿走 ${value}`}>{tile}{badge}</button>
+                  ) : (
+                    <span key={value} className={choosing ? "lk-take dim" : "lk-take"} title={choosing ? `${value} 放不进你的棋盘` : undefined}>{tile}{badge}</span>
+                  );
+                })}
               </div>
             )}
           </section>
-
-
-        </section>
+          <div className="lk-others">
+            {others.map((player) => (
+              <div
+                key={player.id}
+                className={["lk-board-panel", game.phase === "playing" && player.id === current.id ? "active" : "", !connected(player.id) ? "offline" : ""].join(" ")}
+                style={{ "--seat": seatColor(player.color) } as CSSProperties}
+              >
+                <h3>
+                  <i className="lk-dot" style={{ background: seatColor(player.color) }} />
+                  <span className="lk-name">{player.name}</span>
+                  {!connected(player.id) && <small className="lk-offline">离线</small>}
+                  <Score value={player.score} />
+                </h3>
+                <Grid player={player} me={false} hand={null} size={sizes.opp} lastPlaced={game.lastPlaced?.player === player.id ? game.lastPlaced.cell : undefined} />
+              </div>
+            ))}
+          </div>
+        </div>
 
         <aside className="lk-side">
           <section className="lk-panel lk-log">
@@ -254,7 +326,7 @@ function FinalDialog({ game, room, myId, onRematch }: { game: GameState; room: L
             <li key={player.id} className={won(player.id) ? "winner" : ""}>
               <i className="lk-dot" style={{ background: seatColor(player.color) }} />
               <strong>{player.name}{player.id === myId ? "（你）" : ""}</strong>
-              <span>{player.score} / 16</span>
+              <Score value={player.score} />
             </li>
           ))}
         </ol>

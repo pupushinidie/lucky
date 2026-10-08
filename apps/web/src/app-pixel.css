@@ -257,6 +257,16 @@ body { background: repeating-conic-gradient(#101729 0 25%, #0c1120 0 50%) 0 0 / 
 .app-shell .game-rules-toggle > i { color: var(--muted); font-size: 12px; }
 .app-shell .game-rules.open .game-rules-toggle { --rim: var(--gold); }
 .app-shell .game-rules-panel { --rim: var(--gold-2); margin-top: 12px; padding: 18px 20px; background: var(--panel); }
+/* 规则是弹窗：面板本身不再画边框，弹窗太高时在弹窗里滚动 */
+.app-shell .gm-panel.game-rules-dialog { width: min(880px, 100%); white-space: normal; max-height: calc(100dvh - 48px); overflow-y: auto; text-align: left; }
+.app-shell .game-rules-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.app-shell .game-rules-dialog-head h2 { margin: 0; }
+.app-shell .game-rules-dialog .game-rules-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 0; background: none; box-shadow: none; }
+.app-shell .game-rules-dialog .game-rules-block:nth-child(2) { grid-row: auto; }
+@media (max-width: 759px) {
+  .app-shell .game-rules-dialog .game-rules-panel { grid-template-columns: 1fr; }
+  .app-shell .game-rules-block:nth-child(2) { grid-row: auto; }
+}
 .app-shell .game-rules-block h3 { color: var(--gold); font-family: inherit; font-size: 12px; font-weight: 400; }
 .app-shell .game-rules-block :is(p, li) { color: var(--text); font-size: 12px; line-height: 1.7; }
 .app-shell .game-rules-block b { color: var(--gold); font-weight: 400; }
