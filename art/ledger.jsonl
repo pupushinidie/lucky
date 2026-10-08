@@ -1,0 +1,5 @@
+{"time": "2026-10-07 21:36:06", "name": "tile", "endpoint": "/generate-image-v2", "usage": {"type": "usd", "usd": 0.095}, "seconds": 118.2, "status": "completed"}
+{"time": "2026-10-07 21:39:04", "name": "clover", "endpoint": "/generate-image-v2", "usage": {"type": "usd", "usd": 0.095}, "seconds": 178.1, "status": "completed"}
+{"time": "2026-10-07 21:40:06", "name": "hero-s41", "endpoint": "/create-image-pixen", "usage": {"type": "usd", "usd": 0.010791653368208143}, "seconds": 61.6}
+{"time": "2026-10-07 21:41:14", "name": "hero-s42", "endpoint": "/create-image-pixen", "usage": {"type": "usd", "usd": 0.010007580094867283}, "seconds": 68.2}
+{"time": "2026-10-07 21:42:34", "name": "hero-s43", "endpoint": "/create-image-pixen", "usage": {"type": "usd", "usd": 0.010872671365737916}, "seconds": 79.7}
