@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { CELLS, legalCells, type GameEvent, type GameCommand, type GameState, type LobbyRoomSnapshot, type Player } from "@lucky/game";
 import { art, seatColor } from "./art.js";
 import GameRules from "./GameRules.js";
+import { GameRoomMenu, SpectateBar } from "./RoomExtras.js";
 import { socket } from "./socket.js";
 
 interface GameBoardProps {
@@ -17,6 +18,11 @@ interface GameBoardProps {
   readonly onCommand: (command: GameCommand) => void;
   readonly onRematch: (accept: boolean) => void;
   readonly onDissolve: () => void;
+  /** 观战时从这位玩家的座位看。 */
+  readonly watchId: string;
+  readonly onWatch: (playerId: string) => void;
+  /** 观战的人离开。 */
+  readonly onLeave: () => void;
 }
 
 /**
@@ -148,17 +154,20 @@ function Score({ value }: { value: number }) {
   return <span className="lk-score"><b>{value}</b>/16</span>;
 }
 
-function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, chat, onCommand, onRematch, onDissolve }: GameBoardProps) {
+function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, chat, onCommand, onRematch, onDissolve, watchId, onWatch, onLeave }: GameBoardProps) {
   const game = room.game!;
   const member = room.members.find((candidate) => candidate.id === socket.id);
-  const myId = member?.playerId ?? "";
+  // 观战的人没有座位：牌桌按 watchId 那位玩家的座位摆（me 就是他），但什么都不能点，也不叫「你」。
+  const spectating = !member;
+  const myId = member?.playerId ?? watchId;
+  const selfId = spectating ? "" : myId;
   const isHost = member?.isHost ?? false;
   const current = game.players[game.currentPlayer]!;
-  const myTurn = game.phase === "playing" && current.id === myId;
+  const myTurn = !spectating && game.phase === "playing" && current.id === myId;
   const me = game.players.find((player) => player.id === myId);
   const others = game.players.filter((player) => player.id !== myId);
   const secondsLeft = useCountdown(room);
-  const nameOf = (playerId: string) => (playerId === myId ? "你" : game.players.find((player) => player.id === playerId)?.name ?? "?");
+  const nameOf = (playerId: string) => (playerId === selfId ? "你" : game.players.find((player) => player.id === playerId)?.name ?? "?");
   const connected = (playerId: string) => room.members.find((candidate) => candidate.playerId === playerId)?.connected ?? false;
   const firstVersion = useRef(game.version);
   const shownNotice = game.version === firstVersion.current ? notice : "";
@@ -236,6 +245,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         <div className="lk-topbar-right">
           {themeToggle}
           <GameRules />
+          <GameRoomMenu room={room} />
           {isHost && <button className="quiet-button danger" type="button" onClick={onDissolve}>解散</button>}
           {connection}
         </div>
@@ -253,7 +263,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         <div className="lk-col lk-col-mine lk-fit">
           {me && (
             <div className="lk-board-panel mine" style={{ "--seat": seatColor(me.color) } as CSSProperties}>
-              <h3><i className="lk-dot" style={{ background: seatColor(me.color) }} />你的棋盘<Score value={me.score} /></h3>
+              <h3><i className="lk-dot" style={{ background: seatColor(me.color) }} />{spectating ? `${me.name}的棋盘（观战视角）` : "你的棋盘"}<Score value={me.score} /></h3>
               <Grid player={me} me hand={hand} size={sizes.my} lastPlaced={game.lastPlaced?.player === me.id ? game.lastPlaced.cell : undefined} onCell={(cell) => send({ type: "PLACE", cell })} />
             </div>
           )}
@@ -297,6 +307,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         </div>
 
         <aside className="lk-side">
+          {spectating && <SpectateBar room={room} watchId={myId} onWatch={onWatch} onLeave={onLeave} />}
           <section className="lk-panel lk-log">
             <h3>动作记录</h3>
             {log.length === 0 ? <p className="lk-muted">还没有动作。</p> : <ul>{log.map((line) => <li key={line.key}>{line.text}</li>)}</ul>}
@@ -304,12 +315,19 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
           <div className="lk-chat">{chat}</div>
         </aside>
       </div>
-      {game.phase === "finished" && <FinalDialog game={game} room={room} myId={myId} onRematch={onRematch} />}
+      {game.phase === "finished" && <FinalDialog game={game} room={room} myId={selfId} spectating={spectating} onRematch={onRematch} onLeave={onLeave} />}
     </div>
   );
 }
 
-function FinalDialog({ game, room, myId, onRematch }: { game: GameState; room: LobbyRoomSnapshot; myId: string; onRematch: (accept: boolean) => void }) {
+function FinalDialog({ game, room, myId, spectating, onRematch, onLeave }: {
+  game: GameState;
+  room: LobbyRoomSnapshot;
+  myId: string;
+  spectating: boolean;
+  onRematch: (accept: boolean) => void;
+  onLeave: () => void;
+}) {
   const result = game.finalResult!;
   const accepted = room.rematch?.acceptedIds.includes(socket.id ?? "") ?? false;
   const won = (id: string) => result.winners.includes(id);
@@ -330,7 +348,14 @@ function FinalDialog({ game, room, myId, onRematch }: { game: GameState; room: L
             </li>
           ))}
         </ol>
-        {room.rematch && (
+        {spectating ? (
+          <div className="lk-rematch">
+            <span>{room.rematch ? `等玩家决定要不要再来一局（${room.rematch.acceptedIds.length}/${room.members.length} 人同意）` : "对局结束"}</span>
+            <div className="gm-panel-actions">
+              <button className="quiet-button" type="button" onClick={onLeave}>离开观战</button>
+            </div>
+          </div>
+        ) : room.rematch && (
           <div className="lk-rematch">
             <span>再来一局？还剩 {Math.ceil(room.rematch.remainingMs / 1000)} 秒（{room.rematch.acceptedIds.length}/{room.members.length} 人同意）</span>
             <div className="gm-panel-actions">
