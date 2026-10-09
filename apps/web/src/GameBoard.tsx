@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { CELLS, legalCells, type GameEvent, type GameCommand, type GameState, type LobbyRoomSnapshot, type Player } from "@lucky/game";
+import { CELLS, legalCells, type GameEvent, type GameCommand, type GameState, type LobbyMember, type LobbyRoomSnapshot, type Player } from "@lucky/game";
 import { art, seatColor } from "./art.js";
 import GameRules from "./GameRules.js";
 import { GameRoomMenu, SpectateBar } from "./RoomExtras.js";
@@ -17,6 +17,8 @@ interface GameBoardProps {
   readonly chat: ReactNode;
   readonly onCommand: (command: GameCommand) => void;
   readonly onRematch: (accept: boolean) => void;
+  /** 打开 / 取消自己的托管。 */
+  readonly onAuto: (enabled: boolean) => void;
   readonly onDissolve: () => void;
   /** 观战时从这位玩家的座位看。 */
   readonly watchId: string;
@@ -154,7 +156,7 @@ function Score({ value }: { value: number }) {
   return <span className="lk-score"><b>{value}</b>/16</span>;
 }
 
-function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, chat, onCommand, onRematch, onDissolve, watchId, onWatch, onLeave }: GameBoardProps) {
+function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, chat, onCommand, onRematch, onAuto, onDissolve, watchId, onWatch, onLeave }: GameBoardProps) {
   const game = room.game!;
   const member = room.members.find((candidate) => candidate.id === socket.id);
   // 观战的人没有座位：牌桌按 watchId 那位玩家的座位摆（me 就是他），但什么都不能点，也不叫「你」。
@@ -168,7 +170,10 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
   const others = game.players.filter((player) => player.id !== myId);
   const secondsLeft = useCountdown(room);
   const nameOf = (playerId: string) => (playerId === selfId ? "你" : game.players.find((player) => player.id === playerId)?.name ?? "?");
-  const connected = (playerId: string) => room.members.find((candidate) => candidate.playerId === playerId)?.connected ?? false;
+  const memberOf = (playerId: string) => room.members.find((candidate) => candidate.playerId === playerId);
+  const connected = (playerId: string) => memberOf(playerId)?.connected ?? false;
+  // 托管中：人机替我行动，提示条上给一个「取消托管」
+  const autoPlaying = member?.auto === true;
   const firstVersion = useRef(game.version);
   const shownNotice = game.version === firstVersion.current ? notice : "";
   const screen = useRef<HTMLDivElement>(null);
@@ -224,6 +229,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
 
   let prompt: string;
   if (game.phase === "finished") prompt = "对局结束";
+  else if (autoPlaying) prompt = myTurn ? "托管中：人机正在替你走" : "托管中：轮到你时人机替你走";
   else if (choosing) prompt = game.potCount > 0 ? "轮到你：从牌池抽一张，或拿一张桌面明牌" : "牌池空了：只能拿桌面明牌";
   else if (myTurn && game.hand?.from === "pot") prompt = "点亮着的格子放牌，或者弃到桌面";
   else if (myTurn) prompt = "拿了明牌必须放上棋盘：点亮着的格子";
@@ -251,9 +257,12 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         </div>
       </header>
 
-      <div className={myTurn ? "lk-prompt mine" : "lk-prompt"} role="status">
+      <div className={myTurn || autoPlaying ? "lk-prompt mine" : "lk-prompt"} role="status">
         <i className="lk-dot" style={{ background: seatColor(current.color) }} />
         <span className="lk-prompt-text">{prompt}</span>
+        {autoPlaying && game.phase === "playing" && (
+          <button className="quiet-button lk-auto-cancel" type="button" onClick={() => onAuto(false)}>取消托管</button>
+        )}
         {(error || shownNotice) && <span className={error ? "lk-feedback error" : "lk-feedback"} role={error ? "alert" : "status"}>{error || shownNotice}</span>}
         {game.phase === "playing" && secondsLeft !== null && <b className={secondsLeft <= 10 ? "lk-timer low" : "lk-timer"} title="这一步还剩的秒数">{secondsLeft}s</b>}
       </div>
@@ -297,7 +306,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
                 <h3>
                   <i className="lk-dot" style={{ background: seatColor(player.color) }} />
                   <span className="lk-name">{player.name}</span>
-                  {!connected(player.id) && <small className="lk-offline">离线</small>}
+                  <SeatTags member={memberOf(player.id)} />
                   <Score value={player.score} />
                 </h3>
                 <Grid player={player} me={false} hand={null} size={sizes.opp} lastPlaced={game.lastPlaced?.player === player.id ? game.lastPlaced.cell : undefined} />
@@ -317,6 +326,18 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
       </div>
       {game.phase === "finished" && <FinalDialog game={game} room={room} myId={selfId} spectating={spectating} onRematch={onRematch} onLeave={onLeave} />}
     </div>
+  );
+}
+
+/** 名字后面的标签：人机、托管（离线的人也由人机代打）、离线。 */
+function SeatTags({ member }: { member: LobbyMember | undefined }) {
+  const offline = !member?.connected;
+  return (
+    <>
+      {member?.bot && <small className="lk-bot">人机</small>}
+      {!member?.bot && (member?.auto || offline) && <small className="lk-auto">托管</small>}
+      {offline && <small className="lk-offline">离线</small>}
+    </>
   );
 }
 

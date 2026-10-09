@@ -205,6 +205,10 @@
 .lk-board-panel.active { --rim: var(--gold); background: #3a2c10; }
 .lk-board-panel.offline { opacity: 0.6; }
 .lk-offline { color: var(--bad); }
+.lk-bot { padding: 0 4px; color: #d8e8ff; background: #2a62c0; }
+.lk-auto { color: var(--gold); }
+/* 托管时提示条上的「取消托管」 */
+.lk-auto-cancel { flex: 0 0 auto; padding: 2px 8px; font-size: 12px; }
 .lk-others h3 { margin-bottom: 6px; }
 .lk-name { min-width: 0; overflow: hidden; color: var(--text); text-overflow: ellipsis; }
 
