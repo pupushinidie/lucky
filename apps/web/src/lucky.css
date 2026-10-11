@@ -139,6 +139,10 @@
 }
 @media (max-width: 759px) {
   .app-shell.lk-room { width: calc(100% - 32px); }
+  /* 顶栏放不下（白天版、♪、游戏规则、连接状态）时折到第二行，别把字挤成两行 */
+  .lk-room .topbar { height: auto; min-height: 56px; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+  .lk-room .topbar-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 8px; }
+  .lk-room :is(.brand, .topbar-right > *) { flex-shrink: 0; white-space: nowrap; }
   .lk-room .room-layout { padding-top: 16px; }
   .lk-room .room-grid { display: flex; flex-direction: column; }
   .app-shell.lk-room .room-chat-list { height: 210px; flex: 0 0 auto; }
