@@ -7,6 +7,8 @@ import { socket } from "./socket.js";
 import { Coach, TipToast } from "./tutorial/Coach.js";
 import { useFirstTimeTips } from "./tutorial/tips.js";
 import { detectTips, GAME_ID, hintFor, TIPS, type Hint } from "./tutorialGame.js";
+import { useSfxCountdown } from "./gm-sound.js";
+import { pick, useGameSfx } from "./game-sfx.js";
 
 interface GameBoardProps {
   readonly room: LobbyRoomSnapshot;
@@ -136,7 +138,7 @@ export function Tile({ value, hidden = false, size, className = "" }: { value: n
   );
 }
 
-function Grid({ player, me, hand, size, lastPlaced, onCell }: {
+function Grid({ player, me, hand, size, lastPlaced, onCell, onDeny }: {
   player: Player;
   me: boolean;
   /** 手里的牌：能放的格子高亮。 */
@@ -145,6 +147,8 @@ function Grid({ player, me, hand, size, lastPlaced, onCell }: {
   size: number;
   lastPlaced: number | undefined;
   onCell?: (cell: number) => void;
+  /** 手里有牌时点了放不了的格子（响一声「不行」）。 */
+  onDeny?: (() => void) | undefined;
 }) {
   const legal = new Set(hand !== null ? legalCells(player.board, hand) : []);
   return (
@@ -157,7 +161,7 @@ function Grid({ player, me, hand, size, lastPlaced, onCell }: {
         return can && onCell ? (
           <button key={cell} type="button" className={classes} data-tutorial={me ? `cell:${cell}` : undefined} onClick={() => onCell(cell)} title={value === null ? `放在${cellName(cell)}` : `换下 ${value}`}>{content}</button>
         ) : (
-          <span key={cell} className={classes} data-tutorial={me ? `cell:${cell}` : undefined}>{content}</span>
+          <span key={cell} className={classes} data-tutorial={me ? `cell:${cell}` : undefined} onClick={onDeny}>{content}</span>
         );
       })}
     </div>
@@ -185,6 +189,9 @@ function GameBoard({
   const me = game.players.find((player) => player.id === myId);
   const others = game.players.filter((player) => player.id !== myId);
   const secondsLeft = useCountdown(room);
+  // 音效：每一步动作对应的声音；自己这一步的最后 5 秒滴答
+  useGameSfx(game, selfId);
+  useSfxCountdown(myTurn && member?.auto !== true, secondsLeft);
   const nameOf = (playerId: string) => (playerId === selfId ? "你" : game.players.find((player) => player.id === playerId)?.name ?? "?");
   const memberOf = (playerId: string) => room.members.find((candidate) => candidate.playerId === playerId);
   const connected = (playerId: string) => memberOf(playerId)?.connected ?? false;
@@ -314,7 +321,7 @@ function GameBoard({
           {me && (
             <div className="lk-board-panel mine" style={{ "--seat": seatColor(me.color) } as CSSProperties} data-tutorial="my-board">
               <h3><i className="lk-dot" style={{ background: seatColor(me.color) }} />{spectating ? `${me.name}的棋盘（观战视角）` : "你的棋盘"}<Score value={me.score} /></h3>
-              <Grid player={me} me hand={hand} size={sizes.my} lastPlaced={game.lastPlaced?.player === me.id ? game.lastPlaced.cell : undefined} onCell={(cell) => send({ type: "PLACE", cell })} />
+              <Grid player={me} me hand={hand} size={sizes.my} lastPlaced={game.lastPlaced?.player === me.id ? game.lastPlaced.cell : undefined} onCell={(cell) => send({ type: "PLACE", cell })} onDeny={hand !== null ? pick.deny : undefined} />
             </div>
           )}
           {me && sizes.stack && supply}
@@ -331,7 +338,7 @@ function GameBoard({
                   return takeable(value) ? (
                     <button key={value} type="button" className="lk-take" data-tutorial={`take:${value}`} disabled={busy} onClick={() => send({ type: "TAKE", index })} title={`拿走 ${value}`}>{tile}{badge}</button>
                   ) : (
-                    <span key={value} className={choosing ? "lk-take dim" : "lk-take"} data-tutorial={`take:${value}`} title={choosing ? `${value} 放不进你的棋盘` : undefined}>{tile}{badge}</span>
+                    <span key={value} className={choosing ? "lk-take dim" : "lk-take"} data-tutorial={`take:${value}`} onClick={choosing ? pick.deny : undefined} title={choosing ? `${value} 放不进你的棋盘` : undefined}>{tile}{badge}</span>
                   );
                 })}
               </div>

@@ -23,6 +23,7 @@ import {
   type TutorialStep,
 } from "@lucky/game";
 import GameBoard from "./GameBoard.js";
+import { pick } from "./game-sfx.js";
 import { Coach, isTouchDevice, StepPips, type CoachView } from "./tutorial/Coach.js";
 import { writeTutorial } from "./tutorial/storage.js";
 import { useTutorial } from "./tutorial/useTutorial.js";
@@ -58,6 +59,10 @@ export default function TutorialMode({ name, brand, themeToggle, waitingRoom, on
     watchDelay: (command) => (command.type === "FAST_FORWARD" ? 900 : 1400),
   });
   const { game, step, index, practice, flash } = tutorial;
+  // 剧本里点了别的：咕噜嘎提醒的同时响一声「不行」
+  useEffect(() => {
+    if (flash) pick.deny();
+  }, [flash]);
 
   // 走到最后一步就算学完（之后首页不再邀请）
   useEffect(() => {

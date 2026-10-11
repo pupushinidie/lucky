@@ -67,3 +67,5 @@ pm2 按仓库根目录的 `ecosystem.config.cjs` 直接启动一个 `node --impo
 进了房间（等候房间、对局、观战）和新手教程里循环放 `apps/web/public/bgm/lucky.mp3`，首页和房间列表不放。曲子是他用 Suno 做的，原文件在桌面 `bgm v1/幸运数字.mp3`（2026-10-11 接入）。播放器是 `apps/web/src/bgm.tsx`（大厅和各游戏是同一份文件，改了要同步到所有仓库）：一个页面只有一个播放器，从等候房间进牌桌不会从头放；循环处交叉淡化；切到别的标签页时暂停。顶栏的 ♪ 按钮能开关、调音量，设置全站共用（localStorage `gm-music`、`gm-music-volume`，默认开、音量 60）。浏览器要求先点过页面才能出声，从首页点进房间正好满足。
 
 换曲子：把新文件放进 `apps/web/public/bgm/`，用 `~/miniconda3/envs/quant/bin/python -I ~/projects/qa-reports/tools/bgm-analyze.py <文件>` 量出 gain / start / end，改 `App.tsx` 里的 `BGM`。本地检查：`URL=http://localhost:<网页端口>/ node ~/projects/qa-reports/tools/bgm-check.mjs`（进房间、开局、离开、开关、顶栏是否被挤成两行）。
+
+**动作音效**（2026-10-11）：都在 `apps/web/src/game-sfx.ts`，用共用的 `gm-sound.tsx` 即时合成，按每一步的 `game.events` 出声；自己的动作响亮，别人的减半，观战都算别人的；刚进房间 / 重连不出声。从牌池抽 draw（自己的再 flip 一下看到数字）、拿桌面明牌 draw + 轻的 tile、放进空格子 tile；换掉格子里的牌是招牌声（拿起「嗒」+ 滑动 + 放下「嗒」，换下来的牌落到桌面）；弃牌是一张牌滑出去落下；凑满一整行 / 一整列响四叶草铃（招牌声）；终局填满 16 格 sparkle、牌池抽光 reveal，再响赢 / 输。手里有牌时点放不了的格子、该选牌时点拿不了的明牌响 deny；轮到你、最后 5 秒、超时都有提示音。自测：`node ~/projects/qa-reports/tools/lucky-sfx.mjs`，教程：`URL=http://localhost:5182/ node ~/projects/qa-reports/tools/sfx-tut.mjs`。
