@@ -180,7 +180,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     kind: "info", id: "dead", anchor: "cell:13", face: "surprised",
     say: "这一格被堵死了：左边 13，右边 14，中间放不进任何数。",
-    note: "放牌时给空格留点余地，别让同一行（列）里隔着空格的两张只差 1。",
+    note: "空格左边、上面的牌只要和右边、下面的牌只差 1，它就堵死了。放牌时给空格留点余地。",
   },
   {
     kind: "do", id: "take7", anchor: "take:7", expect: { type: "TAKE", index: takeIndex(7) },

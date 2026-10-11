@@ -7,7 +7,7 @@
 ```bash
 npm install
 npm run dev          # 服务端 :3009，网页 :5182
-npm test             # 规则引擎（11 个用例，含 400 局随机模拟）
+npm test             # 规则引擎、人机、教程剧本、服务器
 npm run typecheck
 ```
 
@@ -28,6 +28,16 @@ npm run typecheck
 | 变体 | Michael 开局、Bruno 变体、多局计分都没做 |
 | 人机 | 房主在等待时点空座位上的「加人机」（咕噜一号 / 二号 / 三号，普通难度）；一个人加满人机也能开局，人机总是同意再来一局。策略在 `packages/game/src/bot.ts`：按每个空格还能放的牌数给棋盘估分，明牌逐张算、盲抽按牌池里剩的牌算期望；拿明牌去顶替必须让这一格更接近理想数字（防止人机互相换牌停不下来）。模拟对局里对「总是盲抽、放最顺的空格」胜率约 95% |
 | 托管 | 连续超时 2 次转托管，由人机代打；自己动一下或点「取消托管」就交还。离线的人轮到时先等 3 秒，再由人机代打（不算超时）；用原昵称回来就交还 |
+
+## 新手教程
+
+首页和等候房间都有入口（地址带 `?tutorial` 直接打开），站内统一做法见 `~/projects/pipeline/handbook/tutorial-notes.md`。不连服务器：浏览器里直接跑规则引擎，牌桌就是真正的 GameBoard，咕噜嘎的对话框叠在上面。
+
+- 剧本 `packages/game/src/tutorial.ts`（29 步 9 课），单测 `tutorial.test.ts`。规则引擎不用随机数，所以只把牌池末尾摆好：开局你抽 5 放进空格，咕噜一号抽 19 放不进空格弃到桌面，你拿 19 换掉右下角的 17，咕噜一号拿走 17；然后 `FAST_FORWARD`（只在剧本里有）换成摆好的残局：牌池剩 3 张，你一格堵死、拿 7 填到 15 格，咕噜一号两格都堵死停在 14 格，牌池抽光 15:14 你赢。
+- 共用教练层 `apps/web/src/tutorial/`（从欲罢不能整个复制，不改逻辑），本游戏的部分是 `TutorialMode.tsx`（手机上要高亮的东西很高或偏下时先滚到顶上）和 `tutorialGame.ts`（「提示」的说法、第一次小贴士：拿了明牌、换牌、格子堵死、暗着的明牌、牌池快空）。
+- 锚点 `data-tutorial`：my-board、cell:<0–15>、pot、hand、discard、table、take:<数字>、board:<玩家 id>、final、hint。
+- 「提示」（键盘 H）只在练习局、或者房间里只有自己和人机时出现。
+- 走查脚本 `~/projects/qa-reports/tools/tut-lucky.mjs`（flow / skip / waiting / room，`SHORT=1` 只走到练习局开头），截图在 `~/projects/qa-reports/lucky-tutorial/`。
 
 ## 目录
 

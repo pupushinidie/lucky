@@ -4,6 +4,9 @@ import { art, seatColor } from "./art.js";
 import GameRules from "./GameRules.js";
 import { GameRoomMenu, SpectateBar } from "./RoomExtras.js";
 import { socket } from "./socket.js";
+import { Coach, TipToast } from "./tutorial/Coach.js";
+import { useFirstTimeTips } from "./tutorial/tips.js";
+import { detectTips, GAME_ID, hintFor, TIPS, type Hint } from "./tutorialGame.js";
 
 interface GameBoardProps {
   readonly room: LobbyRoomSnapshot;
@@ -25,6 +28,16 @@ interface GameBoardProps {
   readonly onWatch: (playerId: string) => void;
   /** 观战的人离开。 */
   readonly onLeave: () => void;
+  /** 自己在 room.members 里的 id；默认是 socket.id（新手教程里不连服务器，传固定值）。 */
+  readonly selfMemberId?: string;
+  /**
+   * online：真实对局（只有自己和人机时能看「提示」，第一次遇到某条规则时弹小贴士）；
+   * tutorial：新手教程的剧本进行中（咕噜嘎在讲，不出提示和小贴士）；
+   * practice：教程后的练习局（随时能看提示）。
+   */
+  readonly mode?: "online" | "tutorial" | "practice";
+  /** 结算框里代替「再来一局」的按钮（教程的练习局用）。 */
+  readonly finalActions?: ReactNode;
 }
 
 /**
@@ -142,9 +155,9 @@ function Grid({ player, me, hand, size, lastPlaced, onCell }: {
         const classes = ["lk-cell", can ? (value === null ? "can-place" : "can-swap") : "", cell === lastPlaced ? "last" : ""].join(" ");
         const content = value !== null ? <Tile value={value} size={size} /> : null;
         return can && onCell ? (
-          <button key={cell} type="button" className={classes} onClick={() => onCell(cell)} title={value === null ? `放在${cellName(cell)}` : `换下 ${value}`}>{content}</button>
+          <button key={cell} type="button" className={classes} data-tutorial={me ? `cell:${cell}` : undefined} onClick={() => onCell(cell)} title={value === null ? `放在${cellName(cell)}` : `换下 ${value}`}>{content}</button>
         ) : (
-          <span key={cell} className={classes}>{content}</span>
+          <span key={cell} className={classes} data-tutorial={me ? `cell:${cell}` : undefined}>{content}</span>
         );
       })}
     </div>
@@ -156,9 +169,12 @@ function Score({ value }: { value: number }) {
   return <span className="lk-score"><b>{value}</b>/16</span>;
 }
 
-function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, chat, onCommand, onRematch, onAuto, onDissolve, watchId, onWatch, onLeave }: GameBoardProps) {
+function GameBoard({
+  room, busy, error, notice, brand, connection, themeToggle, chat, onCommand, onRematch, onAuto, onDissolve, watchId, onWatch, onLeave,
+  selfMemberId, mode = "online", finalActions,
+}: GameBoardProps) {
   const game = room.game!;
-  const member = room.members.find((candidate) => candidate.id === socket.id);
+  const member = room.members.find((candidate) => candidate.id === (selfMemberId ?? socket.id));
   // 观战的人没有座位：牌桌按 watchId 那位玩家的座位摆（me 就是他），但什么都不能点，也不叫「你」。
   const spectating = !member;
   const myId = member?.playerId ?? watchId;
@@ -174,6 +190,26 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
   const connected = (playerId: string) => memberOf(playerId)?.connected ?? false;
   // 托管中：人机替我行动，提示条上给一个「取消托管」
   const autoPlaying = member?.auto === true;
+
+  // 「提示」：练习局随时能用；真实对局里只有自己和人机时能用（有别的真人就不显示，免得不公平）
+  const botsOnly = room.members.length > 1 && room.members.every((candidate) => candidate.playerId === myId || candidate.bot === true);
+  const canHint = !spectating && !autoPlaying && myTurn && (mode === "practice" || (mode === "online" && botsOnly));
+  const [hint, setHint] = useState<{ version: number; hint: Hint } | null>(null);
+  const shownHint = hint && hint.version === game.version && canHint ? hint.hint : null;
+  const toggleHint = () => setHint((current) => (current && current.version === game.version ? null : { version: game.version, hint: hintFor(game, myId) }));
+  useEffect(() => {
+    if (!canHint) return;
+    const handle = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.metaKey || event.ctrlKey || event.altKey || target?.closest("input, textarea, [contenteditable]")) return;
+      if (event.key.toLowerCase() === "h") toggleHint();
+    };
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [canHint, game.version]);
+
+  // 真实对局里第一次遇到某条规则（第一次换牌、有格子堵死、牌池快空……）时弹一句小贴士
+  const tips = useFirstTimeTips(GAME_ID, game.version, () => detectTips(game, myId), TIPS, mode === "online" && !spectating);
   const firstVersion = useRef(game.version);
   const shownNotice = game.version === firstVersion.current ? notice : "";
   const screen = useRef<HTMLDivElement>(null);
@@ -203,14 +239,14 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
 
   const supply = (
     <div className="lk-supply">
-      <section className={canDraw ? "lk-panel lk-pot active" : "lk-panel lk-pot"}>
+      <section className={canDraw ? "lk-panel lk-pot active" : "lk-panel lk-pot"} data-tutorial="pot">
         <h3>牌池<span className="lk-score">剩 <b>{game.potCount}</b></span></h3>
         <button type="button" className="lk-pile" disabled={!canDraw} onClick={() => send({ type: "DRAW" })} title="盲抽一张">
           <Tile value={null} hidden size={64} />
           {canDraw && <span>抽牌</span>}
         </button>
       </section>
-      <section className={game.phase === "playing" && game.stage === "place" ? "lk-panel lk-hand active" : "lk-panel lk-hand"}>
+      <section className={game.phase === "playing" && game.stage === "place" ? "lk-panel lk-hand active" : "lk-panel lk-hand"} data-tutorial="hand">
         <h3>{game.phase === "playing" && !myTurn ? `${current.name} 手里` : "手里的牌"}</h3>
         {game.phase === "playing" && game.stage === "place" && game.hand ? (
           <>
@@ -218,7 +254,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
             <div className="lk-hand-info">
               <small>{game.hand.from === "pot" ? "从牌池抽的" : "从桌面拿的"}</small>
               {myTurn && game.hand.from === "pot" && (
-                <button type="button" className="quiet-button lk-discard" disabled={busy} onClick={() => send({ type: "DISCARD" })} title="弃到桌面，谁都能拿">弃牌</button>
+                <button type="button" className="quiet-button lk-discard" data-tutorial="discard" disabled={busy} onClick={() => send({ type: "DISCARD" })} title="弃到桌面，谁都能拿">弃牌</button>
               )}
             </div>
           </>
@@ -263,6 +299,11 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         {autoPlaying && game.phase === "playing" && (
           <button className="quiet-button lk-auto-cancel" type="button" onClick={() => onAuto(false)}>取消托管</button>
         )}
+        {canHint && (
+          <button className={shownHint ? "quiet-button lk-hint on" : "quiet-button lk-hint"} type="button" data-tutorial="hint" onClick={toggleHint}>
+            提示<kbd>H</kbd>
+          </button>
+        )}
         {(error || shownNotice) && <span className={error ? "lk-feedback error" : "lk-feedback"} role={error ? "alert" : "status"}>{error || shownNotice}</span>}
         {game.phase === "playing" && secondsLeft !== null && <b className={secondsLeft <= 10 ? "lk-timer low" : "lk-timer"} title="这一步还剩的秒数">{secondsLeft}s</b>}
       </div>
@@ -271,7 +312,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         {/* 左列：自己的棋盘（stack 档位时牌池和手牌也放这里）；中列：牌池和手牌、桌面明牌、其他玩家 */}
         <div className="lk-col lk-col-mine lk-fit">
           {me && (
-            <div className="lk-board-panel mine" style={{ "--seat": seatColor(me.color) } as CSSProperties}>
+            <div className="lk-board-panel mine" style={{ "--seat": seatColor(me.color) } as CSSProperties} data-tutorial="my-board">
               <h3><i className="lk-dot" style={{ background: seatColor(me.color) }} />{spectating ? `${me.name}的棋盘（观战视角）` : "你的棋盘"}<Score value={me.score} /></h3>
               <Grid player={me} me hand={hand} size={sizes.my} lastPlaced={game.lastPlaced?.player === me.id ? game.lastPlaced.cell : undefined} onCell={(cell) => send({ type: "PLACE", cell })} />
             </div>
@@ -280,7 +321,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
         </div>
         <div className="lk-col lk-col-mid lk-fit">
           {me && !sizes.stack && supply}
-          <section className={choosing && tableGroups.some((group) => takeable(group.value)) ? "lk-panel lk-table active" : "lk-panel lk-table"}>
+          <section className={choosing && tableGroups.some((group) => takeable(group.value)) ? "lk-panel lk-table active" : "lk-panel lk-table"} data-tutorial="table">
             <h3>桌面明牌<small>{game.table.length} 张 · 谁都能拿，拿了必须放</small></h3>
             {tableGroups.length === 0 ? <p className="lk-muted">还没有人弃牌。</p> : (
               <div className="lk-table-tiles" style={{ "--tbl": `${sizes.table}px` } as CSSProperties}>
@@ -288,9 +329,9 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
                   const tile = <Tile value={value} size={sizes.table} />;
                   const badge = count > 1 ? <i className="lk-count">×{count}</i> : null;
                   return takeable(value) ? (
-                    <button key={value} type="button" className="lk-take" disabled={busy} onClick={() => send({ type: "TAKE", index })} title={`拿走 ${value}`}>{tile}{badge}</button>
+                    <button key={value} type="button" className="lk-take" data-tutorial={`take:${value}`} disabled={busy} onClick={() => send({ type: "TAKE", index })} title={`拿走 ${value}`}>{tile}{badge}</button>
                   ) : (
-                    <span key={value} className={choosing ? "lk-take dim" : "lk-take"} title={choosing ? `${value} 放不进你的棋盘` : undefined}>{tile}{badge}</span>
+                    <span key={value} className={choosing ? "lk-take dim" : "lk-take"} data-tutorial={`take:${value}`} title={choosing ? `${value} 放不进你的棋盘` : undefined}>{tile}{badge}</span>
                   );
                 })}
               </div>
@@ -302,6 +343,7 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
                 key={player.id}
                 className={["lk-board-panel", game.phase === "playing" && player.id === current.id ? "active" : "", !connected(player.id) ? "offline" : ""].join(" ")}
                 style={{ "--seat": seatColor(player.color) } as CSSProperties}
+                data-tutorial={`board:${player.id}`}
               >
                 <h3>
                   <i className="lk-dot" style={{ background: seatColor(player.color) }} />
@@ -324,7 +366,23 @@ function GameBoard({ room, busy, error, notice, brand, connection, themeToggle, 
           <div className="lk-chat">{chat}</div>
         </aside>
       </div>
-      {game.phase === "finished" && <FinalDialog game={game} room={room} myId={selfId} spectating={spectating} onRematch={onRematch} onLeave={onLeave} />}
+      {game.phase === "finished" && (
+        <FinalDialog game={game} room={room} myId={selfId} selfMemberId={member?.id ?? ""} spectating={spectating} onRematch={onRematch} onLeave={onLeave} actions={finalActions} />
+      )}
+      {shownHint && (
+        <Coach
+          view={{
+            key: `hint-${game.version}`,
+            say: shownHint.say,
+            ...(shownHint.note ? { note: shownHint.note } : {}),
+            anchor: shownHint.anchor,
+            focus: false,
+            face: "think",
+            actions: <button className="quiet-button" type="button" onClick={() => setHint(null)}>知道了</button>,
+          }}
+        />
+      )}
+      {tips.tip && <TipToast tip={tips.tip} onClose={tips.dismiss} onNever={tips.never} />}
     </div>
   );
 }
@@ -341,16 +399,19 @@ function SeatTags({ member }: { member: LobbyMember | undefined }) {
   );
 }
 
-function FinalDialog({ game, room, myId, spectating, onRematch, onLeave }: {
+function FinalDialog({ game, room, myId, selfMemberId, spectating, onRematch, onLeave, actions }: {
   game: GameState;
   room: LobbyRoomSnapshot;
   myId: string;
+  selfMemberId: string;
   spectating: boolean;
   onRematch: (accept: boolean) => void;
   onLeave: () => void;
+  /** 代替「再来一局」的按钮（教程的练习局）。 */
+  actions?: ReactNode;
 }) {
   const result = game.finalResult!;
-  const accepted = room.rematch?.acceptedIds.includes(socket.id ?? "") ?? false;
+  const accepted = room.rematch?.acceptedIds.includes(selfMemberId) ?? false;
   const won = (id: string) => result.winners.includes(id);
   const rows = [...game.players].sort((a, b) => Number(won(b.id)) - Number(won(a.id)) || b.score - a.score);
   const title = won(myId) ? (result.winners.length > 1 ? "并列获胜！" : "你赢了！") : `${result.winners.map((id) => game.players.find((p) => p.id === id)?.name).join("、")} 获胜`;
@@ -360,7 +421,7 @@ function FinalDialog({ game, room, myId, spectating, onRematch, onLeave }: {
         <img className="lk-final-icon" src={art.clover} alt="" />
         <h2 id="lk-final-title">{title}</h2>
         <p className="lk-muted">{result.reason === "full" ? "第一个填满 16 格。" : "牌池抽光了，按棋盘上的牌数定胜负。"}</p>
-        <ol className="lk-standings">
+        <ol className="lk-standings" data-tutorial="final">
           {rows.map((player) => (
             <li key={player.id} className={won(player.id) ? "winner" : ""}>
               <i className="lk-dot" style={{ background: seatColor(player.color) }} />
@@ -369,7 +430,11 @@ function FinalDialog({ game, room, myId, spectating, onRematch, onLeave }: {
             </li>
           ))}
         </ol>
-        {spectating ? (
+        {actions ? (
+          <div className="lk-rematch">
+            <div className="gm-panel-actions">{actions}</div>
+          </div>
+        ) : spectating ? (
           <div className="lk-rematch">
             <span>{room.rematch ? `等玩家决定要不要再来一局（${room.rematch.acceptedIds.length}/${room.members.length} 人同意）` : "对局结束"}</span>
             <div className="gm-panel-actions">

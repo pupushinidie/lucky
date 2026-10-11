@@ -331,3 +331,20 @@ button.lk-take:hover .lk-tile { transform: translateY(calc(var(--px) * -2)); }
 @media (prefers-reduced-motion: reduce) {
   .lk-cell.can-place { animation: none; }
 }
+
+/* ---------- 新手教程 ---------- */
+/* 提示条上的「提示」（练习局、只有人机的房间） */
+.lk-hint { flex: 0 0 auto; padding: 2px 8px; font-size: 12px; }
+.lk-hint kbd { margin-left: 4px; font-family: inherit; }
+.lk-hint.on { color: var(--gold); }
+/* 侧栏：教程进度代替聊天；剧本进行中动作记录只留两条（咕噜嘎会讲每一步） */
+.tut-checklist h3 small { margin-left: 6px; }
+.tut-script .lk-log { min-height: 0; }
+.tut-script .lk-log ul { max-height: 64px; }
+/* 等候房间：教程入口放在标题和「离开房间」中间 */
+.lk-room-tut { flex: 1; min-width: 0; max-width: 620px; align-self: center; }
+.lk-room-tut .tut-invite { margin: 0; padding: 8px 12px; }
+@media (max-width: 759px) {
+  .lk-room .room-heading { flex-wrap: wrap; }
+  .lk-room-tut { flex-basis: 100%; order: 3; max-width: none; }
+}
