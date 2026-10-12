@@ -3,3 +3,6 @@
 {"time": "2026-10-07 21:40:06", "name": "hero-s41", "endpoint": "/create-image-pixen", "usage": {"type": "usd", "usd": 0.010791653368208143}, "seconds": 61.6}
 {"time": "2026-10-07 21:41:14", "name": "hero-s42", "endpoint": "/create-image-pixen", "usage": {"type": "usd", "usd": 0.010007580094867283}, "seconds": 68.2}
 {"time": "2026-10-07 21:42:34", "name": "hero-s43", "endpoint": "/create-image-pixen", "usage": {"type": "usd", "usd": 0.010872671365737916}, "seconds": 79.7}
+{"time": "2026-10-11 22:13:21", "name": "night-s1702", "endpoint": "/create-image-pixen", "usage": {"type": "generations", "generations": 1.0}, "seconds": 51.4}
+{"time": "2026-10-11 22:13:36", "name": "night-s1701", "endpoint": "/create-image-pixen", "usage": {"type": "generations", "generations": 1.0}, "seconds": 81.5}
+{"time": "2026-10-11 22:13:36", "name": "night-s1703", "endpoint": "/create-image-pixen", "usage": {"type": "generations", "generations": 1.0}, "seconds": 52.2}

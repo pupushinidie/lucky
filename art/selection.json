@@ -1,5 +1,17 @@
 {
   "tile": "out/tile/tile-53.png",
   "clover": "out/clover/clover-27.png",
-  "hero": "out/hero-s42.png"
+  "hero": "out/hero-s42.png",
+  "bg": {
+    "_说明": "全屏匹配背景图（512x288，day/night），候选在 art/out/bg/",
+    "day": "沿用了已有的 bg/day.png（本次未改）",
+    "night": {
+      "file": "apps/web/public/art/bg/night.png",
+      "source": "art/out/bg/night-s1702.png",
+      "size": [
+        512,
+        288
+      ]
+    }
+  }
 }
