@@ -296,6 +296,7 @@ function App() {
   if (room) {
     return (
       <main className="app-shell lk-room">
+        <LkBackdrop />
         <header className="topbar">
           <Brand />
           <div className="topbar-right">
@@ -325,6 +326,7 @@ function App() {
 
   return (
     <main className="app-shell lk-home">
+      <LkBackdrop />
       <header className="topbar">
         <Brand />
         <div className="topbar-right">
@@ -452,6 +454,18 @@ function App() {
         </div>
       </section>
     </main>
+  );
+}
+
+/** 全屏背景：把对局场景铺满窗口（16:9 居中裁切），上面盖一层罩色让面板更突出。首页和等候房间放在 <main> 的第一个子元素。 */
+function LkBackdrop() {
+  const base = import.meta.env.BASE_URL;
+  return (
+    <div className="lk-backdrop" aria-hidden="true">
+      <div className="lk-backdrop-art lk-backdrop-art--day" style={{ backgroundImage: `url(${base}art/bg/day.png)` }} />
+      <div className="lk-backdrop-art lk-backdrop-art--night" style={{ backgroundImage: `url(${base}art/bg/night.png)` }} />
+      <div className="lk-backdrop-veil" />
+    </div>
   );
 }
 

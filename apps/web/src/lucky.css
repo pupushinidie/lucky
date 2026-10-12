@@ -352,3 +352,19 @@ button.lk-take:hover .lk-tile { transform: translateY(calc(var(--px) * -2)); }
   .lk-room .room-heading { flex-wrap: wrap; }
   .lk-room-tut { flex-basis: 100%; order: 3; max-width: none; }
 }
+
+/* ---------- 全屏背景：首页、等候房间的场景铺满窗口 ---------- */
+.lk-backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #0c140c; }
+.lk-backdrop-art {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100vw, calc(100vh * 16 / 9));
+  height: max(100vh, calc(100vw * 9 / 16));
+  transform: translate(-50%, -50%);
+  background-size: 100% 100%;
+  image-rendering: pixelated;
+}
+.lk-backdrop-art--day { display: none; }
+.lk-backdrop-veil { position: absolute; inset: 0; background: #060a06; opacity: 0.4; }
+.app-shell.lk-home > :not(.lk-backdrop):not(.gm-modal-backdrop), .app-shell.lk-room > :not(.lk-backdrop):not(.gm-modal-backdrop) { position: relative; z-index: 1; }
